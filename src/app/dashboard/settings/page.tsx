@@ -8,17 +8,66 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Mail, HelpCircle, FileText, RotateCcw } from "lucide-react"; // Added RotateCcw icon
+import { Mail, HelpCircle, FileText, RotateCcw, Trash2 } from "lucide-react"; 
 import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [identity, setIdentity] = useState("User");
+
+  useEffect(() => {
+    const fetchUserIdentity = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // 1. Try to get display_name from profiles
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile?.display_name) {
+          setIdentity(profile.display_name);
+        } else if (user.email) {
+          // 2. Fallback to email if no display_name
+          setIdentity(user.email);
+        }
+      }
+    };
+    fetchUserIdentity();
+  }, []);
   
-  // New function to reset local storage
+  
   const handleResetOnboarding = () => {
-    localStorage.removeItem("hasSeenDisclaimer");
-    // Optional: Force reload to show it immediately, or just alert
+    localStorage.removeItem("hasSeenDisclaimer_v2"); // Updated to match your current version
     if (confirm("Honor Code reset. Go to Dashboard to see it?")) {
         window.location.href = "/dashboard";
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    const confirmed = confirm("⚠️ ARE YOU SURE? ⚠️\n\nThis will permanently delete your account, all your XP, quests, and leaderboard history.\n\nThis action cannot be undone.");
+    
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+
+    // Call the RPC function we created in SQL
+    const { error } = await supabase.rpc('delete_user_account');
+
+    if (error) {
+        alert("Error deleting account: " + error.message);
+        setIsDeleting(false);
+    } else {
+        // Sign out locally to clear session
+        await supabase.auth.signOut();
+        alert("Account deleted. Goodbye, Adventurer.");
+        router.push("/"); // Redirect to landing page
     }
   };
 
@@ -37,19 +86,22 @@ export default function SettingsPage() {
             <CardDescription>We are here to support your journey.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Link href="mailto:support@leveluplife.com">
+            <Link href="mailto:syed.abdul.r.2002@gmail.com" className="w-full block">
               <Button className="w-full justify-start gap-2" variant="outline">
                 <Mail className="h-4 w-4" />
                 Contact Support
               </Button>
             </Link>
-            <Link href="/docs">
+            
+            {/* Functional Documentation Button */}
+            <Link href="/docs" className="w-full block mt-2">
               <Button className="w-full justify-start gap-2" variant="outline">
                 <FileText className="h-4 w-4" />
                 Read Documentation
               </Button>
             </Link>
-             <Button className="w-full justify-start gap-2" variant="ghost">
+            
+             <Button className="w-full justify-start gap-2" variant="outline">
                 <HelpCircle className="h-4 w-4" />
                 Help Center
               </Button>
@@ -57,21 +109,33 @@ export default function SettingsPage() {
         </Card>
 
         {/* ACCOUNT SECTION */}
-        <Card>
+        <Card className="border-destructive/20">
           <CardHeader>
             <CardTitle>Account & Preferences</CardTitle>
             <CardDescription>Manage your profile settings.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-             <p className="text-sm text-muted-foreground">Logged in as User.</p>
+             <p className="text-sm text-muted-foreground">
+                Logged in as <span className="font-semibold text-foreground">{identity}</span>.
+             </p>
              
-             {/* NEW RESET BUTTON */}
              <Button variant="outline" onClick={handleResetOnboarding} className="w-full justify-start gap-2">
                 <RotateCcw className="h-4 w-4" />
                 Reset Honor Code Popup
              </Button>
 
-             <Button variant="destructive" className="w-full">Delete Account</Button>
+             <div className="pt-4 border-t border-destructive/20">
+               <p className="text-xs text-destructive mb-2 font-medium">Danger Zone</p>
+               <Button 
+                 variant="destructive" 
+                 className="w-full justify-start gap-2"
+                 onClick={handleDeleteAccount}
+                 disabled={isDeleting}
+               >
+                 <Trash2 className="h-4 w-4" />
+                 {isDeleting ? "Deleting..." : "Delete Account"}
+               </Button>
+             </div>
           </CardContent>
         </Card>
       </div>
